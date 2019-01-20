@@ -30,6 +30,37 @@ func (c *Client) login() {
 	fmt.Println(res.String())
 	return
 }
+func (c *Client) ping() {
+	req := sip.NewMessage(sip.MsgReqStatus)
+	req.AddField(sip.Field{Type: sip.FieldStatusCode, Value: "1"})
+	req.AddField(sip.Field{Type: sip.FieldMaxPrintWidth, Value: "010"})
+	req.AddField(sip.Field{Type: sip.FieldProtocolVersion, Value: "2.00"})
+
+	fmt.Println(req.String())
+	res := c.send(req)
+	fmt.Println(res.String())
+	return
+}
+
+func (c *Client) patronInfo() {
+	if c.State["patron"] == "" {
+		fmt.Println("Missing patron!")
+		return
+	}
+	fmt.Printf("fetching info on patron %s\n", c.State["patron"])
+	req := sip.NewMessage(sip.MsgReqPatronInformation)
+	req.AddField(c.inst)
+	t := sipTime()
+	req.AddField(sip.Field{Type: sip.FieldLanguage, Value: "010"})
+	req.AddField(sip.Field{Type: sip.FieldTransactionDate, Value: t})
+	req.AddField(sip.Field{Type: sip.FieldSummary, Value: "YYYYYYYYYY"})
+	req.AddField(sip.Field{Type: sip.FieldPatronIdentifier, Value: c.State["patron"]})
+
+	fmt.Println(req.String())
+	res := c.send(req)
+	fmt.Println(res.String())
+	return
+}
 
 func (c *Client) checkin() {
 	if c.State["barcode"] == "" || c.State["branch"] == "" {
@@ -43,10 +74,11 @@ func (c *Client) checkin() {
 	req.AddField(sip.Field{Type: sip.FieldNoBlock, Value: "Y"})
 	req.AddField(sip.Field{Type: sip.FieldTransactionDate, Value: t})
 	req.AddField(sip.Field{Type: sip.FieldReturnDate, Value: t})
+	req.AddField(sip.Field{Type: sip.FieldCurrentLocation, Value: c.State["branch"]})
 	req.AddField(sip.Field{Type: sip.FieldInstitutionID, Value: c.State["branch"]})
 	req.AddField(sip.Field{Type: sip.FieldTerminalLocation, Value: c.State["branch"]})
 	req.AddField(sip.Field{Type: sip.FieldItemIdentifier, Value: c.State["barcode"]})
-
+	fmt.Println(req.String())
 	res := c.send(req)
 	fmt.Println(res.String())
 	return
@@ -125,15 +157,37 @@ func sipTime() string {
 	return fmt.Sprintf("%s", t.Format("20060102    150405"))
 }
 
+func usage() string {
+	return `
+state    print state object
+ping     keepalive ping
+
+state setters:
+barcode  <barcode>
+branch   <branchcode>
+patron   <cardnumber>
+
+methods:
+checkin
+checkout
+renew
+patronInfo
+`
+}
+
 func readStdin(c *Client) {
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		line, _ := reader.ReadString('\n')
 		cmd := strings.Fields(line)
 		switch cmd[0] {
+		case "", "?", "h":
+			fmt.Println(usage())
 		/* --- state commands --- */
 		case "state":
 			fmt.Printf("status:\n----\n%v\n", c.State)
+		case "ping":
+			c.ping()
 		case "branch":
 			c.State["branch"] = cmd[1]
 		case "barcode":
@@ -147,6 +201,8 @@ func readStdin(c *Client) {
 			c.checkout()
 		case "renew":
 			c.renew()
+		case "patronInfo":
+			c.patronInfo()
 		default:
 			fmt.Println("UNKNOWN COMMAND")
 		}
